@@ -79,7 +79,7 @@ void draw_pumps_header() {
   u8g.drawStr(4,12, "Name");
   u8g.drawStr(35,12, "Status");
   u8g.drawStr(70, 12, "Level");
-  u8g.drawStr(100, 12, "Delay");
+  u8g.drawStr(102, 12, "Wait");
   u8g.drawLine(0,20,128, 20);
   // Vertical lines
   u8g.drawLine(31,10,31, 40);
@@ -93,6 +93,7 @@ void draw_plant_data(int pumpId){
   char const *pumpActivityText;
   unsigned long currentMillis = millis();
   boolean isPaused = false;
+  boolean isReady = false;
 
   int verticalPos = 22 + pumpId * 10;
 
@@ -107,6 +108,7 @@ void draw_plant_data(int pumpId){
       isPaused = true;
     } else { // Pump is on, ready to work (not blocked by any delay) but not yet needed
       pumpActivityText = "READY";
+      isReady = true;
     }
   } else {
     pumpActivityText = "OFF";
@@ -124,9 +126,37 @@ void draw_plant_data(int pumpId){
     char remainingTime[10];
     remaining_time_to_string(remainingTime, previousMillisPump[pumpId], intervalPump[pumpId]);
     u8g.drawStr(98, verticalPos, remainingTime);
+  } else if (isReady)
+  {
+    char waitThresholdText[10];
+    sprintf(waitThresholdText, "<%d%%", moistureThreshold[pumpId]);
+    u8g.drawStr(98, verticalPos, waitThresholdText);
   }
+  
 
   u8g.drawLine(0, verticalPos+8, 128, verticalPos+8);
+}
+
+void draw_excluded_values() {
+  int verticalPos = 42;
+  char workingRangeText[35];
+  sprintf(workingRangeText, "Working range: %d%% - %d%%", lowestAcceptableLevel, highestAcceptableLevel);
+  u8g.drawStr(0, verticalPos, workingRangeText);
+}
+
+void draw_sensor_refresh() {
+  int verticalPos = 50;
+  long currentMillis = millis();
+  u8g.drawStr(0, verticalPos+1, "Sensor refresh");
+  for (int i = 0; i < 2; i++)
+  {
+    char sensorRefreshTime[10];
+    remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
+    u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
+  }
+  u8g.drawLine(0, verticalPos, 128, verticalPos);
+  u8g.drawLine(66,verticalPos,66, 64);
+  
 }
 
 // Diplaying the main screen with global system informations
@@ -154,11 +184,14 @@ void main_screen(uint8_t a) {
   }
   draw_pumps_header();
 
-  // Second line, first plant
+  // Pumps and sensor data
   draw_plant_data(0);
   draw_plant_data(1);
-  // u8g.drawStr(0,12, plant1Text);
 
+  draw_excluded_values();
+  draw_sensor_refresh();
+
+  u8g.drawStr(72, 55, "Roch Moreau");
 }
 
 // draw_state not currently needed
