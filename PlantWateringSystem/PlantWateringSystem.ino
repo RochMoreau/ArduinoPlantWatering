@@ -24,6 +24,9 @@ unsigned long interval10h = (unsigned long) 1000 * 60 * 60 * 10;
 unsigned long interval14h = (unsigned long) 1000 * 60 * 60 * 14;
 unsigned long intervalPump1 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
 unsigned long intervalPump2 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
+unsigned long runTimePump1 = (unsigned long) 4000; // 4 secs run time
+unsigned long runTimePump2 = (unsigned long) 4000; // 4 secs run time
+
 
 // Global variables to keep the state of the system
 unsigned long previousMillisGlobalTimer = 0;
@@ -147,12 +150,35 @@ void draw(void) {
 }
 
 
-
-
+// Always use this method to start pumps. Ensures that the pump state variable always reflect the real pump state
+void start_pump_1() {
+  pump1IsRunning = true;
+  digitalWrite(pump1, HIGH);
+}
+void start_pump_2() {
+  pump2IsRunning = true;
+  digitalWrite(pump2, HIGH);
+}
+// Methods for stopping the pumps
+void stop_pump_1() {
+  pump1IsRunning = false;
+  digitalWrite(pump1, LOW);
+}
+void stop_pump_2() {
+  pump2IsRunning = false;
+  digitalWrite(pump2, LOW);
+}
 
 
 void manage_pump_1() {
-
+  long currentMillis = millis();
+  // We need to be able to stop pump even if system is disabled
+  // If we disable the system while a pump is running for example.
+  if (pump1IsRunning && (currentMillis - previousMillisPump1 > runTimePump1))
+  {
+    stop_pump_1();
+  }
+  
 }
 
 
