@@ -13,44 +13,38 @@
 
 // INPUTS AND OUTPUTS
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE); // I2C / TWI 
-int buttonResetTimer = 2; // digital Pin 2
-int pump[2] = {8,9};
-//Deprecated
-//int pump1 = 8; // Digital pin 8
-//int pump2 = 9; // Digital pin 9
-int pumpController[2] = {3,4}; // Digital pin 3 and 4
-//Deprecated
-// int pumpController1 = 3; 
-// int pumpController2 = 4; // Digital pin 4
+int buttonResetTimer = 2; // Digital pin 2
+int pump[2] = {8,9}; // Digital pins 8 and 9
+int pumpController[2] = {3,4}; // Digital pins 3 and 4
+int moistureController[2] = {6, 7}; // Digital pins 6 and 7 to power the moisture sensors. I don't want to connect
+// them to 5V because being always ON will corrode the sensors.
+int moistureSensor[2] = {A0, A1};
+
 
 // Constants
 unsigned long interval10h = (unsigned long) 1000 * 60 * 60 * 10;
 unsigned long interval14h = (unsigned long) 1000 * 60 * 60 * 14;
 unsigned long intervalPump[2] = {(unsigned long) 1000 * 60 * 20, (unsigned long) 1000 * 60 * 20};
-//unsigned long intervalPump1 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
-//unsigned long intervalPump2 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump2
 unsigned long runTimePump[2] = {(unsigned long) 4000, (unsigned long) 4000};
-//unsigned long runTimePump1 = (unsigned long) 4000; // 4 secs run time
-//unsigned long runTimePump2 = (unsigned long) 4000; // 4 secs run time
 char const *pumpName[2] = {"Pump 1", "Pump 2"};
+const int lowestAcceptableLevel = 10; // The pump should not be triggered below this level, probable sign of error in reading
+const int highestAcceptableLevel = 85; // The pump should not be triggered over this level also.
+unsigned long intervalMoisture[2] = {(unsigned long) 1000 * 60 * 5, (unsigned long) 1000 * 60 * 5}; // 1 read every 5 mins
+const int moistureThreshold[2] = {30, 30}; // Percentage below which the pump should be activated
 
 
 // Global variables to keep the state of the system
 unsigned long previousMillisGlobalTimer = 0;
 unsigned long previousMillisButtonResetTimer = 0;
 unsigned long previousMillisPump[2] = {0, 0};
-// unsigned long previousMillisPump1 = 0;
-// unsigned long previousMillisPump2 = 0;
+int moistureLevel[2] = {0, 0};
+unsigned long previousMillisMoisture[2] = {0, 0};
 
 
 boolean systemIsActive = true;
 boolean timerIsSet = false;
 boolean pumpIsActive[2] = {true, true};
-// boolean pump1IsActive = true;
-// boolean pump2IsActive = true;
 boolean pumpIsRunning[2] = {false, false};
-// boolean pump1IsRunning = false;
-// boolean pump2IsRunning = false;
 
 
 
@@ -88,9 +82,9 @@ void draw_pumps_header() {
   u8g.drawStr(100, 12, "Delay");
   u8g.drawLine(0,20,128, 20);
   // Vertical lines
-  u8g.drawLine(31,10,31, 64);
-  u8g.drawLine(66,10,66, 64);
-  u8g.drawLine(93,10,93, 64);
+  u8g.drawLine(31,10,31, 40);
+  u8g.drawLine(66,10,66, 40);
+  u8g.drawLine(93,10,93, 40);
 
 }
 
@@ -100,32 +94,39 @@ void draw_plant_data(int pumpId){
   unsigned long currentMillis = millis();
   boolean isPaused = false;
 
+  int verticalPos = 22 + pumpId * 10;
+
   if (pumpIsActive[pumpId])
   {
     if (pumpIsRunning[pumpId]) // Pump is delivering water
     {
       pumpActivityText = "RUN";
-    } else if (currentMillis - previousMillisPump[pumpId] < intervalPump[pumpId]) // Pump is paused because it has been used recently
+    } else if (currentMillis - previousMillisPump[pumpId] < intervalPump[pumpId] && previousMillisPump[pumpId] != 0) // Pump is paused because it has been used recently
     {
       pumpActivityText = "PAUSED";
       isPaused = true;
-    } else { // Pump is on, ready to work but not yet needed
+    } else { // Pump is on, ready to work (not blocked by any delay) but not yet needed
       pumpActivityText = "READY";
     }
   } else {
     pumpActivityText = "OFF";
   }
   // Name
-  u8g.drawStr(0,22, pumpName[pumpId]);
+  u8g.drawStr(0, verticalPos, pumpName[pumpId]);
   // Status
-  u8g.drawStr(35, 22, pumpActivityText);
-
+  u8g.drawStr(35, verticalPos, pumpActivityText);
+  // Moisture
+  char moistureLevelText[6];
+  sprintf(moistureLevelText, "%d%%", moistureLevel[pumpId]);
+  u8g.drawStr(73, verticalPos, moistureLevelText);
   // Delay
   if (isPaused) {
     char remainingTime[10];
     remaining_time_to_string(remainingTime, previousMillisPump[pumpId], intervalPump[pumpId]);
-    u8g.drawStr(98, 22, remainingTime);
+    u8g.drawStr(98, verticalPos, remainingTime);
   }
+
+  u8g.drawLine(0, verticalPos+8, 128, verticalPos+8);
 }
 
 // Diplaying the main screen with global system informations
@@ -155,11 +156,12 @@ void main_screen(uint8_t a) {
 
   // Second line, first plant
   draw_plant_data(0);
+  draw_plant_data(1);
   // u8g.drawStr(0,12, plant1Text);
 
 }
 
-
+// draw_state not currently needed
 uint8_t draw_state = 3; // goes from 0 to 71
           // draw_state >> 3 goes from 0 to 8, each contains 8 draw_state values
           // draw_state&7  goes from 0 to 7 and repeat itself matching draw_state pace
@@ -171,6 +173,24 @@ void draw(void) {
   }
 }
 
+
+
+
+// Control Section
+
+void read_moisture_level(int pumpId) {
+  long currentMillis = millis();
+  if ((currentMillis - previousMillisMoisture[pumpId] > intervalMoisture[pumpId]) || previousMillisMoisture[pumpId] == 0)
+  {
+    previousMillisMoisture[pumpId] = currentMillis;
+    digitalWrite(moistureController[pumpId], HIGH);
+    delay(10);
+    int rawReading = analogRead(moistureSensor[pumpId]);
+    // Sensors gives 1005 in air and 160 fully submerged in water, we want data from 0% to 100%
+    moistureLevel[pumpId] = map(rawReading, 1005, 160, 0, 100); 
+    digitalWrite(moistureController[pumpId], LOW);
+  }
+}
 
 // Always use this method to start pumps. Ensures that the pump state variable always reflect the real pump state
 void start_pump(int pumpId) {
@@ -196,8 +216,9 @@ void manage_pump(int pumpId) {
 
   pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
 
-  // TODO: Replace true with the function to determine if the moisture level is low enough to start pumping
-  if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId] && true 
+  if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId]
+  && moistureLevel[pumpId] < moistureThreshold[pumpId] && moistureLevel[pumpId] > lowestAcceptableLevel 
+  && moistureLevel[pumpId] < highestAcceptableLevel
   && ((currentMillis - previousMillisPump[pumpId] > intervalPump[pumpId]) || previousMillisPump[pumpId] == 0))
   {
     start_pump(pumpId);
@@ -211,16 +232,21 @@ void manage_pump(int pumpId) {
 void setup(void) {
 
   pinMode(buttonResetTimer, INPUT);
-  pinMode(pump[0], OUTPUT);           
-  pinMode(pump[1], OUTPUT);           
-  pinMode(pumpController[0], INPUT);           
-  pinMode(pumpController[1], INPUT);           
+  for (int i = 0; i < 2; i++)
+  {
+    pinMode(pump[i], OUTPUT);           
+    pinMode(pumpController[i], INPUT);           
+    pinMode(moistureController[i], OUTPUT);
+    pinMode(moistureSensor[i], INPUT);
+
+    digitalWrite(moistureController[i], LOW);
+  }
+  
+  
 
 
   Serial.begin(115200);
   Serial.println("Initialization done.");
-  Serial.println(pump[0]);
-  Serial.println(pump[1]);
 }
 
 void loop(void) {
@@ -252,15 +278,10 @@ void loop(void) {
   }
 
   // Serial.print(digitalRead(pumpController[0]));
-
-  manage_pump(0);
-  
-
-
-
-  // increase the state
-//   draw_state++;
-//   if ( draw_state >= 9*8 ) // 9: number of pictures, 8: framerate of a picture
-//     draw_state = 0;
+  for (int pumpId = 0; pumpId < 2; pumpId++)
+  {
+    read_moisture_level(pumpId);
+    manage_pump(pumpId);
+  }
 
 }
