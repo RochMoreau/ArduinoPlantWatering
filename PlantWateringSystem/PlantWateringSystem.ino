@@ -14,33 +14,43 @@
 // INPUTS AND OUTPUTS
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE); // I2C / TWI 
 int buttonResetTimer = 2; // digital Pin 2
-int pump1 = 8; // Digital pin 8
-int pump2 = 9; // Digital pin 9
-int pumpController1 = 3; // Digital pin 3
-int pumpController2 = 4; // Digital pin 4
+int pump[2] = {8,9};
+//Deprecated
+//int pump1 = 8; // Digital pin 8
+//int pump2 = 9; // Digital pin 9
+int pumpController[2] = {3,4}; // Digital pin 3 and 4
+//Deprecated
+// int pumpController1 = 3; 
+// int pumpController2 = 4; // Digital pin 4
 
 // Constants
 unsigned long interval10h = (unsigned long) 1000 * 60 * 60 * 10;
 unsigned long interval14h = (unsigned long) 1000 * 60 * 60 * 14;
-unsigned long intervalPump1 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
-unsigned long intervalPump2 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
-unsigned long runTimePump1 = (unsigned long) 4000; // 4 secs run time
-unsigned long runTimePump2 = (unsigned long) 4000; // 4 secs run time
+unsigned long intervalPump[2] = {(unsigned long) 1000 * 60 * 20, (unsigned long) 1000 * 60 * 20};
+//unsigned long intervalPump1 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
+//unsigned long intervalPump2 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump2
+unsigned long runTimePump[2] = {(unsigned long) 4000, (unsigned long) 4000};
+//unsigned long runTimePump1 = (unsigned long) 4000; // 4 secs run time
+//unsigned long runTimePump2 = (unsigned long) 4000; // 4 secs run time
+char const *pumpName[2] = {"Pump 1", "Pump 2"};
 
 
 // Global variables to keep the state of the system
 unsigned long previousMillisGlobalTimer = 0;
 unsigned long previousMillisButtonResetTimer = 0;
-unsigned long previousMillisPump1 = 0;
-unsigned long previousMillisPump2 = 0;
+unsigned long previousMillisPump[2] = {0, 0};
+// unsigned long previousMillisPump1 = 0;
+// unsigned long previousMillisPump2 = 0;
 
 
 boolean systemIsActive = true;
 boolean timerIsSet = false;
-boolean pump1IsActive = true;
-boolean pump2IsActive = true;
-boolean pump1IsRunning = false;
-boolean pump2IsRunning = false;
+boolean pumpIsActive[2] = {true, true};
+// boolean pump1IsActive = true;
+// boolean pump2IsActive = true;
+boolean pumpIsRunning[2] = {false, false};
+// boolean pump1IsRunning = false;
+// boolean pump2IsRunning = false;
 
 
 
@@ -55,8 +65,8 @@ void u8g_prepare(void) {
 
 
 // Return a string displaying the remaining time given a system state and a time interval
-void remaining_time_to_string(char* text, unsigned long interval) {
-  long remainingTime = (interval - (millis() - previousMillisGlobalTimer))/ 1000;
+void remaining_time_to_string(char* text, unsigned long previousTime, unsigned long interval) {
+  long remainingTime = (interval - (millis() - previousTime))/ 1000;
 
   int hours = numberOfHours(remainingTime);
   int minutes = numberOfMinutes(remainingTime);
@@ -84,26 +94,38 @@ void draw_pumps_header() {
 
 }
 
-void draw_plant_data(int position, char const *name, boolean pumpIsActive, boolean pumpIsRunning, unsigned long previousMillisPump, unsigned long interval) {
+
+void draw_plant_data(int pumpId){
   char const *pumpActivityText;
   unsigned long currentMillis = millis();
+  boolean isPaused = false;
 
-  if (pumpIsActive)
+  if (pumpIsActive[pumpId])
   {
-    if (pumpIsRunning) // Pump is delivering water
+    if (pumpIsRunning[pumpId]) // Pump is delivering water
     {
-      pumpActivityText = "RUNNING";
-    } else if (currentMillis - previousMillisPump < interval) // Pump is paused because it has been used recently
+      pumpActivityText = "RUN";
+    } else if (currentMillis - previousMillisPump[pumpId] < intervalPump[pumpId]) // Pump is paused because it has been used recently
     {
       pumpActivityText = "PAUSED";
+      isPaused = true;
     } else { // Pump is on, ready to work but not yet needed
       pumpActivityText = "READY";
     }
   } else {
     pumpActivityText = "OFF";
   }
-  u8g.drawStr(0,22, name);
+  // Name
+  u8g.drawStr(0,22, pumpName[pumpId]);
+  // Status
   u8g.drawStr(35, 22, pumpActivityText);
+
+  // Delay
+  if (isPaused) {
+    char remainingTime[10];
+    remaining_time_to_string(remainingTime, previousMillisPump[pumpId], intervalPump[pumpId]);
+    u8g.drawStr(98, 22, remainingTime);
+  }
 }
 
 // Diplaying the main screen with global system informations
@@ -112,8 +134,8 @@ void main_screen(uint8_t a) {
   // First line, System state and timer state
   if(systemIsActive){
     if(timerIsSet) {
-      char text1[35];
-      remaining_time_to_string(text1, interval14h);
+      char text1[10];
+      remaining_time_to_string(text1, previousMillisGlobalTimer, interval14h);
       u8g.drawStr( 0, 0, "System ON for ");
       u8g.drawStr( 63, 0, text1);
     } else {
@@ -121,8 +143,8 @@ void main_screen(uint8_t a) {
     }
   } else {
     if(timerIsSet) {
-      char text2[35];
-      remaining_time_to_string(text2, interval10h);
+      char text2[10];
+      remaining_time_to_string(text2, previousMillisGlobalTimer, interval10h);
       u8g.drawStr( 0, 0, "System OFF for ");
       u8g.drawStr( 67, 0, text2);
     } else {
@@ -132,7 +154,7 @@ void main_screen(uint8_t a) {
   draw_pumps_header();
 
   // Second line, first plant
-  draw_plant_data(1, "Pump 1", pump1IsActive, pump1IsRunning, previousMillisPump1, intervalPump1);
+  draw_plant_data(0);
   // u8g.drawStr(0,12, plant1Text);
 
 }
@@ -151,33 +173,36 @@ void draw(void) {
 
 
 // Always use this method to start pumps. Ensures that the pump state variable always reflect the real pump state
-void start_pump_1() {
-  pump1IsRunning = true;
-  digitalWrite(pump1, HIGH);
-}
-void start_pump_2() {
-  pump2IsRunning = true;
-  digitalWrite(pump2, HIGH);
+void start_pump(int pumpId) {
+  previousMillisPump[pumpId] = millis();
+  pumpIsRunning[pumpId] = true;
+  digitalWrite(pump[pumpId], HIGH);
 }
 // Methods for stopping the pumps
-void stop_pump_1() {
-  pump1IsRunning = false;
-  digitalWrite(pump1, LOW);
-}
-void stop_pump_2() {
-  pump2IsRunning = false;
-  digitalWrite(pump2, LOW);
+void stop_pump(int pumpId) {
+  pumpIsRunning[pumpId] = false;
+  digitalWrite(pump[pumpId], LOW);
 }
 
 
-void manage_pump_1() {
+void manage_pump(int pumpId) {
   long currentMillis = millis();
   // We need to be able to stop pump even if system is disabled
   // If we disable the system while a pump is running for example.
-  if (pump1IsRunning && (currentMillis - previousMillisPump1 > runTimePump1))
+  if (pumpIsRunning[pumpId] && (currentMillis - previousMillisPump[pumpId] > runTimePump[pumpId]))
   {
-    stop_pump_1();
+    stop_pump(pumpId);
   }
+
+  pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
+
+  // TODO: Replace true with the function to determine if the moisture level is low enough to start pumping
+  if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId] && true 
+  && ((currentMillis - previousMillisPump[pumpId] > intervalPump[pumpId]) || previousMillisPump[pumpId] == 0))
+  {
+    start_pump(pumpId);
+  }
+  
   
 }
 
@@ -186,14 +211,16 @@ void manage_pump_1() {
 void setup(void) {
 
   pinMode(buttonResetTimer, INPUT);
-  pinMode(pump1, OUTPUT);           
-  pinMode(pump2, OUTPUT);           
-  pinMode(pumpController1, INPUT);           
-  pinMode(pumpController2, INPUT);           
+  pinMode(pump[0], OUTPUT);           
+  pinMode(pump[1], OUTPUT);           
+  pinMode(pumpController[0], INPUT);           
+  pinMode(pumpController[1], INPUT);           
 
 
   Serial.begin(115200);
   Serial.println("Initialization done.");
+  Serial.println(pump[0]);
+  Serial.println(pump[1]);
 }
 
 void loop(void) {
@@ -224,15 +251,9 @@ void loop(void) {
     timerIsSet = !timerIsSet;
   }
 
-  if (systemIsActive)
-  {
-    manage_pump_1();
-    // manage_pump_2();
-    pump1IsActive = digitalRead(pumpController1);
-    pump2IsActive = digitalRead(pumpController2);
+  // Serial.print(digitalRead(pumpController[0]));
 
-    
-  }
+  manage_pump(0);
   
 
 
