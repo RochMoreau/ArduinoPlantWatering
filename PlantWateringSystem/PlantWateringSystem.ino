@@ -4,6 +4,7 @@
 /* Useful Constants */
 #define SECS_PER_MIN  (60UL)
 #define SECS_PER_HOUR (3600UL)
+#define SECS_PER_DAY  (SECS_PER_HOUR * 24L)
  
 /* Useful Macros for getting elapsed time */
 #define numberOfSeconds(_time_) (_time_ % SECS_PER_MIN)  
@@ -13,17 +14,31 @@
 // INPUTS AND OUTPUTS
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE); // I2C / TWI 
 int buttonResetTimer = 2; // digital Pin 2
+int pump1 = 8; // Digital pin 8
+int pump2 = 9; // Digital pin 9
+int pumpController1 = 3; // Digital pin 3
+int pumpController2 = 4; // Digital pin 4
 
 // Constants
 unsigned long interval10h = (unsigned long) 1000 * 60 * 60 * 10;
 unsigned long interval14h = (unsigned long) 1000 * 60 * 60 * 14;
+unsigned long intervalPump1 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
+unsigned long intervalPump2 = (unsigned long) 1000 * 60 * 20; // 20 min delay on pump1
 
 // Global variables to keep the state of the system
 unsigned long previousMillisGlobalTimer = 0;
 unsigned long previousMillisButtonResetTimer = 0;
+unsigned long previousMillisPump1 = 0;
+unsigned long previousMillisPump2 = 0;
+
 
 boolean systemIsActive = true;
 boolean timerIsSet = false;
+boolean pump1IsActive = true;
+boolean pump2IsActive = true;
+boolean pump1IsRunning = false;
+boolean pump2IsRunning = false;
+
 
 
 
@@ -36,7 +51,6 @@ void u8g_prepare(void) {
 }
 
 
-
 // Return a string displaying the remaining time given a system state and a time interval
 void remaining_time_to_string(char* text, unsigned long interval) {
   long remainingTime = (interval - (millis() - previousMillisGlobalTimer))/ 1000;
@@ -47,12 +61,47 @@ void remaining_time_to_string(char* text, unsigned long interval) {
 
   if (systemIsActive)
   {
-    sprintf(text,"System ON for %d:%d:%d",hours,minutes,seconds);
+    sprintf(text,"%d:%d:%d",hours,minutes,seconds);
   } else {
-    sprintf(text,"System OFF for %d:%d:%d",hours,minutes,seconds);
+    sprintf(text,"%d:%d:%d",hours,minutes,seconds);
   }
 }
 
+void draw_pumps_header() {
+  u8g.drawLine(0,10,128, 10);
+  u8g.drawStr(4,12, "Name");
+  u8g.drawStr(35,12, "Status");
+  u8g.drawStr(70, 12, "Level");
+  u8g.drawStr(100, 12, "Delay");
+  u8g.drawLine(0,20,128, 20);
+  // Vertical lines
+  u8g.drawLine(31,10,31, 64);
+  u8g.drawLine(66,10,66, 64);
+  u8g.drawLine(93,10,93, 64);
+
+}
+
+void draw_plant_data(int position, char const *name, boolean pumpIsActive, boolean pumpIsRunning, unsigned long previousMillisPump, unsigned long interval) {
+  char const *pumpActivityText;
+  unsigned long currentMillis = millis();
+
+  if (pumpIsActive)
+  {
+    if (pumpIsRunning) // Pump is delivering water
+    {
+      pumpActivityText = "RUNNING";
+    } else if (currentMillis - previousMillisPump < interval) // Pump is paused because it has been used recently
+    {
+      pumpActivityText = "PAUSED";
+    } else { // Pump is on, ready to work but not yet needed
+      pumpActivityText = "READY";
+    }
+  } else {
+    pumpActivityText = "OFF";
+  }
+  u8g.drawStr(0,22, name);
+  u8g.drawStr(35, 22, pumpActivityText);
+}
 
 // Diplaying the main screen with global system informations
 void main_screen(uint8_t a) {
@@ -62,7 +111,8 @@ void main_screen(uint8_t a) {
     if(timerIsSet) {
       char text1[35];
       remaining_time_to_string(text1, interval14h);
-      u8g.drawStr( 0, 0, text1);
+      u8g.drawStr( 0, 0, "System ON for ");
+      u8g.drawStr( 63, 0, text1);
     } else {
       u8g.drawStr( 0, 0, "System ON. No timer set.");
     }
@@ -70,15 +120,17 @@ void main_screen(uint8_t a) {
     if(timerIsSet) {
       char text2[35];
       remaining_time_to_string(text2, interval10h);
-      u8g.drawStr( 0, 0, text2);
+      u8g.drawStr( 0, 0, "System OFF for ");
+      u8g.drawStr( 67, 0, text2);
     } else {
       u8g.drawStr( 0, 0, "System OFF. No timer set.");
     }
   }
-  u8g.drawLine(0,10,128, 10);
+  draw_pumps_header();
 
   // Second line, first plant
-  u8g.drawStr(0,12, "Plant1");
+  draw_plant_data(1, "Pump 1", pump1IsActive, pump1IsRunning, previousMillisPump1, intervalPump1);
+  // u8g.drawStr(0,12, plant1Text);
 
 }
 
@@ -95,21 +147,27 @@ void draw(void) {
 }
 
 
-bool toggle_led(void *) {
-  digitalWrite(8, !digitalRead(8)); // toggle the LED
-  return true; // keep timer active? true
+
+
+
+
+void manage_pump_1() {
+
 }
+
 
 
 void setup(void) {
 
-  pinMode(8, OUTPUT);           
   pinMode(buttonResetTimer, INPUT);
+  pinMode(pump1, OUTPUT);           
+  pinMode(pump2, OUTPUT);           
+  pinMode(pumpController1, INPUT);           
+  pinMode(pumpController2, INPUT);           
 
 
-
-  // Serial.begin(115200);
-  // Serial.println("Initialization done.");
+  Serial.begin(115200);
+  Serial.println("Initialization done.");
 }
 
 void loop(void) {
@@ -133,14 +191,23 @@ void loop(void) {
   // Button control for timer setting
   // Set the OFF time at now, launch a new cycle of ON/OFF time every 14/10H
   // Delay of 300 ms between 2 button press
-  if( digitalRead(buttonResetTimer) && currentMillis - previousMillisButtonResetTimer > 300 ) { 
+  if( digitalRead(buttonResetTimer) && currentMillis - previousMillisButtonResetTimer > 600 ) { 
     previousMillisButtonResetTimer = currentMillis;
     previousMillisGlobalTimer = currentMillis;
     systemIsActive = timerIsSet == systemIsActive;
     timerIsSet = !timerIsSet;
   }
 
+  if (systemIsActive)
+  {
+    manage_pump_1();
+    // manage_pump_2();
+    pump1IsActive = digitalRead(pumpController1);
+    pump2IsActive = digitalRead(pumpController2);
 
+    
+  }
+  
 
 
 
