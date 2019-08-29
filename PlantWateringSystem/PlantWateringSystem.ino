@@ -148,11 +148,18 @@ void draw_sensor_refresh() {
   int verticalPos = 50;
   long currentMillis = millis();
   u8g.drawStr(0, verticalPos+1, "Sensor refresh");
-  for (int i = 0; i < 2; i++)
-  {
-    char sensorRefreshTime[10];
-    remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
-    u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
+  if (systemIsActive) {
+    for (int i = 0; i < 2; i++)
+    {
+      if (pumpIsActive[i])
+      {
+        char sensorRefreshTime[10];
+        remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
+        u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
+      } else {
+        u8g.drawStr(i*40, verticalPos+8, "OFF");
+      }
+    }
   }
   u8g.drawLine(0, verticalPos, 128, verticalPos);
   u8g.drawLine(66,verticalPos,66, 64);
@@ -211,9 +218,13 @@ void draw(void) {
 
 // Control Section
 
+// Only read in periodic interval defined in global constants to avoid corroding sensors
+// The sensors are deactivated when a pump is disabled and when the system is disabled
+// Once the system and the pump are available again, a reading is done instantly.
 void read_moisture_level(int pumpId) {
   long currentMillis = millis();
-  if ((currentMillis - previousMillisMoisture[pumpId] > intervalMoisture[pumpId]) || previousMillisMoisture[pumpId] == 0)
+  if ( systemIsActive && pumpIsActive[pumpId] &&
+    (currentMillis - previousMillisMoisture[pumpId] > intervalMoisture[pumpId]) || previousMillisMoisture[pumpId] == 0)
   {
     previousMillisMoisture[pumpId] = currentMillis;
     digitalWrite(moistureController[pumpId], HIGH);
@@ -256,8 +267,6 @@ void manage_pump(int pumpId) {
   {
     start_pump(pumpId);
   }
-  
-  
 }
 
 
@@ -278,8 +287,8 @@ void setup(void) {
   
 
 
-  Serial.begin(115200);
-  Serial.println("Initialization done.");
+  // Serial.begin(115200);
+  // Serial.println("Initialization done.");
 }
 
 void loop(void) {
