@@ -30,7 +30,7 @@ char const *pumpName[2] = {"Pump 1", "Pump 2"};
 const int lowestAcceptableLevel = 10; // The pump should not be triggered below this level, probable sign of error in reading
 const int highestAcceptableLevel = 85; // The pump should not be triggered over this level also.
 unsigned long intervalMoisture[2] = {(unsigned long) 1000 * 60 * 5, (unsigned long) 1000 * 60 * 5}; // 1 read every 5 mins
-const int moistureThreshold[2] = {30, 30}; // Percentage below which the pump should be activated
+const int moistureThreshold[2] = {40, 30}; // Percentage below which the pump should be activated
 
 
 // Global variables to keep the state of the system
@@ -162,7 +162,7 @@ void draw_sensor_refresh() {
       u8g.drawStr(i*40, verticalPos+8, "OFF");
     }
   }
-  
+
   u8g.drawLine(0, verticalPos, 128, verticalPos);
   u8g.drawLine(66,verticalPos,66, 64);
   
