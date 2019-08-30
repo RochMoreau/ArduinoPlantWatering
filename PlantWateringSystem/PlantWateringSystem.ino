@@ -122,7 +122,10 @@ void draw_plant_data(int pumpId){
   sprintf(moistureLevelText, "%d%%", moistureLevel[pumpId]);
   u8g.drawStr(73, verticalPos, moistureLevelText);
   // Delay
-  if (isPaused) {
+  if (!systemIsActive)
+  {
+    u8g.drawStr(98, verticalPos, "Sys ON");
+  } else if (isPaused) {
     char remainingTime[10];
     remaining_time_to_string(remainingTime, previousMillisPump[pumpId], intervalPump[pumpId]);
     u8g.drawStr(98, verticalPos, remainingTime);
@@ -148,19 +151,18 @@ void draw_sensor_refresh() {
   int verticalPos = 50;
   long currentMillis = millis();
   u8g.drawStr(0, verticalPos+1, "Sensor refresh");
-  if (systemIsActive) {
-    for (int i = 0; i < 2; i++)
+  for (int i = 0; i < 2; i++)
+  {
+    if (pumpIsActive[i] && systemIsActive)
     {
-      if (pumpIsActive[i])
-      {
-        char sensorRefreshTime[10];
-        remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
-        u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
-      } else {
-        u8g.drawStr(i*40, verticalPos+8, "OFF");
-      }
+      char sensorRefreshTime[10];
+      remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
+      u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
+    } else {
+      u8g.drawStr(i*40, verticalPos+8, "OFF");
     }
   }
+  
   u8g.drawLine(0, verticalPos, 128, verticalPos);
   u8g.drawLine(66,verticalPos,66, 64);
   
