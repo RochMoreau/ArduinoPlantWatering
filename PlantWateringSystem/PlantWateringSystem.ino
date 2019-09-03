@@ -28,9 +28,9 @@ unsigned long intervalPump[2] = {(unsigned long) 1000 * 60 * 20, (unsigned long)
 unsigned long runTimePump[2] = {(unsigned long) 4000, (unsigned long) 4000};
 char const *pumpName[2] = {"Pump 1", "Pump 2"};
 const int lowestAcceptableLevel = 10; // The pump should not be triggered below this level, probable sign of error in reading
-const int highestAcceptableLevel = 85; // The pump should not be triggered over this level also.
-unsigned long intervalMoisture[2] = {(unsigned long) 1000 * 60 * 5, (unsigned long) 1000 * 60 * 5}; // 1 read every 5 mins
-const int moistureThreshold[2] = {40, 30}; // Percentage below which the pump should be activated
+const int highestAcceptableLevel = 90; // The pump should not be triggered over this level also.
+unsigned long intervalMoisture[2] = {(unsigned long) intervalPump[1]/5, (unsigned long) intervalPump[1]/5}; // 1 read every 5 mins
+const int moistureThreshold[2] = {60, 30}; // Percentage below which the pump should be activated
 
 
 // Global variables to keep the state of the system
@@ -48,6 +48,12 @@ boolean timerIsSet = false;
 boolean manualMode = false;
 boolean pumpIsActive[2] = {true, true};
 boolean pumpIsRunning[2] = {false, false};
+
+// Variables to keep the system safe (block the pumps if the sensor don't get better level after 2 pump activation)
+int pumpActivationCounter[2] = {0,0}; // pumpActivationCounter : 0 : no problem so far, 1 : maybe a problem, 2: definitely a problem
+int moistureLevelLastPumpActivation[2] = {0,0};
+boolean pumpIsBlocked[2] = {true, true}; // Activate the pump in manual mode to unlock it
+
 
 
 
@@ -106,7 +112,10 @@ void draw_plant_data(int pumpId){
 
   int verticalPos = 22 + pumpId * 10;
 
-  if (pumpIsActive[pumpId])
+  if(pumpIsBlocked[pumpId]) 
+  {
+    pumpActivityText = "BLOCKED";
+  } else if (pumpIsActive[pumpId])
   {
     if (pumpIsRunning[pumpId]) // Pump is delivering water
     {
@@ -125,13 +134,17 @@ void draw_plant_data(int pumpId){
   // Name
   u8g.drawStr(0, verticalPos, pumpName[pumpId]);
   // Status
-  u8g.drawStr(35, verticalPos, pumpActivityText);
+  u8g.drawStr(33, verticalPos, pumpActivityText);
   // Moisture
   char moistureLevelText[6];
   sprintf(moistureLevelText, "%d%%", moistureLevel[pumpId]);
   u8g.drawStr(73, verticalPos, moistureLevelText);
   // Delay
-  if (!systemIsActive)
+  if( pumpIsBlocked[pumpId] ) 
+  {
+    u8g.drawStr(98, verticalPos, "Man ON");
+  }
+  else if (!systemIsActive)
   {
     u8g.drawStr(98, verticalPos, "Sys ON");
   } else if (isPaused) {
@@ -162,12 +175,16 @@ void draw_sensor_refresh() {
   u8g.drawStr(0, verticalPos+1, "Sensor refresh");
   for (int i = 0; i < 2; i++)
   {
-    if (pumpIsActive[i] && systemIsActive)
+    if (pumpIsActive[i] && systemIsActive && !pumpIsBlocked[i])
     {
       char sensorRefreshTime[10];
       remaining_time_to_string(sensorRefreshTime, previousMillisMoisture[i], intervalMoisture[i]);
       u8g.drawStr(i*40, verticalPos+8, sensorRefreshTime);
-    } else {
+    } else if (pumpIsBlocked[i])
+    {
+      u8g.drawStr(i*40, verticalPos+8, "BLKD");
+    } else
+     {
       u8g.drawStr(i*40, verticalPos+8, "OFF");
     }
   }
@@ -260,7 +277,7 @@ void draw(void) {
 // Once the system and the pump are available again, a reading is done instantly.
 void read_moisture_level(int pumpId) {
   long currentMillis = millis();
-  if ( systemIsActive && pumpIsActive[pumpId] &&
+  if ( systemIsActive && pumpIsActive[pumpId] && !pumpIsBlocked[pumpId] &&
     (currentMillis - previousMillisMoisture[pumpId] > intervalMoisture[pumpId]) || previousMillisMoisture[pumpId] == 0)
   {
     previousMillisMoisture[pumpId] = currentMillis;
@@ -286,6 +303,9 @@ void stop_pump(int pumpId) {
 }
 // Same method as before but in manual mode. Starts a different timer
 void start_pump_manual(int pumpId) {
+  pumpIsBlocked[pumpId] = false; // unblock pump
+  pumpActivationCounter[pumpId] = 0;
+
   previousMillisPumpManual[pumpId] = millis();
   pumpIsRunning[pumpId] = true;
   digitalWrite(pump[pumpId], HIGH);
@@ -297,6 +317,8 @@ void stop_pump_manual(int pumpId) {
   digitalWrite(pump[pumpId], LOW);
 }
 
+
+
 void manage_pump(int pumpId) {
   long currentMillis = millis();
   // We need to be able to stop pump even if system is disabled
@@ -307,13 +329,35 @@ void manage_pump(int pumpId) {
     stop_pump(pumpId);
   }
 
-  if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId]
+ 
+
+  if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId] && !pumpIsBlocked[pumpId]
   && moistureLevel[pumpId] < moistureThreshold[pumpId] && moistureLevel[pumpId] > lowestAcceptableLevel 
   && moistureLevel[pumpId] < highestAcceptableLevel
   && ((currentMillis - previousMillisPump[pumpId] > intervalPump[pumpId]) || previousMillisPump[pumpId] == 0))
   {
-    start_pump(pumpId);
+
+    // pumpActivationCounter : 0 : no problem so far, 1 : maybe a problem, 2: definitely a problem
+    // If new reading after watering is not more than 2% (tolerance) more than last reading, this is a potential problem
+    // If we hit 2 time a "potential problem", it becomes a problem and we block the pump to avoid damage or
+    // flooding if the sensor is not working properly or if the water reserve is empty
+    if (pumpActivationCounter[pumpId] >= 2)
+    {
+      pumpIsBlocked[pumpId] = true;
+    }
+    else if (pumpActivationCounter[pumpId] < 2 && moistureLevelLastPumpActivation[pumpId] - moistureLevel[pumpId] >= -2)
+    {
+      moistureLevelLastPumpActivation[pumpId] = moistureLevel[pumpId];
+      pumpActivationCounter[pumpId] += 1;
+      start_pump(pumpId);
+    }
+    else
+    { // everything is OK so just restart the pump activation counter and start the pump
+      pumpActivationCounter[pumpId] = 0;
+      start_pump(pumpId);
+    }
   }
+
 }
 
 
