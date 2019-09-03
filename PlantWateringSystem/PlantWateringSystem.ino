@@ -284,6 +284,7 @@ void setup(void) {
     pinMode(moistureSensor[i], INPUT);
 
     digitalWrite(moistureController[i], LOW);
+    digitalWrite(pump[i], LOW);
   }
   
   
