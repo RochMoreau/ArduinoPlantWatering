@@ -43,6 +43,7 @@ unsigned long previousMillisMoisture[2] = {0, 0};
 
 boolean systemIsActive = true;
 boolean timerIsSet = false;
+boolean manualMode = false;
 boolean pumpIsActive[2] = {true, true};
 boolean pumpIsRunning[2] = {false, false};
 
@@ -203,15 +204,28 @@ void main_screen(uint8_t a) {
   u8g.drawStr(72, 55, "Roch Moreau");
 }
 
-// draw_state not currently needed
-uint8_t draw_state = 3; // goes from 0 to 71
-          // draw_state >> 3 goes from 0 to 8, each contains 8 draw_state values
-          // draw_state&7  goes from 0 to 7 and repeat itself matching draw_state pace
+void manual_mode_screen() {
+  u8g.setFontPosCenter();
+  u8g.drawStr( 64, 10, "MANUAL MODE");
+  for (int pumpId = 0; pumpId < 2; pumpId++)
+  {
+    u8g.drawStr( 32+64*pumpId, 22, pumpName);
+    if (pumpIsActive[pumpId])
+    {
+      u8g.drawStr( 32+64*pumpId, 42, "RUNNING");
+    } else {
+      u8g.drawStr( 32+64*pumpId, 42, "OFF");
+    }
+    
+  }
+  
+}
 
 void draw(void) {
   u8g_prepare();
-  switch(draw_state >> 3) {
-    case 0: main_screen(draw_state&7); break;
+  switch(manualMode) {
+    case false: main_screen(draw_state&7); break;
+    case true: manual_mode_screen(); break;
   }
 }
 
@@ -249,18 +263,22 @@ void stop_pump(int pumpId) {
   pumpIsRunning[pumpId] = false;
   digitalWrite(pump[pumpId], LOW);
 }
+// Same method as before but in manual mode. Does not start a timer
+void start_pump_manual(int pumpId) {
+  pumpIsRunning[pumpId] = true;
+  digitalWrite(pump[pumpId], HIGH);
+}
 
 
 void manage_pump(int pumpId) {
   long currentMillis = millis();
   // We need to be able to stop pump even if system is disabled
   // If we disable the system while a pump is running for example.
-  if (pumpIsRunning[pumpId] && (currentMillis - previousMillisPump[pumpId] > runTimePump[pumpId]))
+  if ((pumpIsRunning[pumpId] && (currentMillis - previousMillisPump[pumpId] > runTimePump[pumpId])) //stop pump if it has completed its runtime
+      || !pumpIsActive[pumpId]) // Immediately stop pump if pump switch is OFF
   {
     stop_pump(pumpId);
   }
-
-  pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
 
   if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId]
   && moistureLevel[pumpId] < moistureThreshold[pumpId] && moistureLevel[pumpId] > lowestAcceptableLevel 
@@ -314,19 +332,46 @@ void loop(void) {
 
   // Button control for timer setting
   // Set the OFF time at now, launch a new cycle of ON/OFF time every 14/10H
-  // Delay of 300 ms between 2 button press
+  // Delay of 600 ms between 2 button press
+  // Flow: 1: System ON, no timer / 2: System OFF, timer set / 3: System OFF, no timer 
+  // (4): (if pumps are both disabled) man / 5: System ON, timer set
   if( digitalRead(buttonResetTimer) && currentMillis - previousMillisButtonResetTimer > 600 ) { 
     previousMillisButtonResetTimer = currentMillis;
     previousMillisGlobalTimer = currentMillis;
-    systemIsActive = timerIsSet == systemIsActive;
-    timerIsSet = !timerIsSet;
+
+    if (!systemIsActive && !timerIsSet && !manualMode && !pumpIsActive[0] && !pumpIsActive[1])
+    {
+      manualMode = true;
+    } else {
+      manualMode = false;
+      systemIsActive = timerIsSet == systemIsActive;
+      timerIsSet = !timerIsSet;
+    }
+    
   }
 
-  // Serial.print(digitalRead(pumpController[0]));
+
+  pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
+
+
   for (int pumpId = 0; pumpId < 2; pumpId++)
   {
-    read_moisture_level(pumpId);
-    manage_pump(pumpId);
+    if (manualMode)
+    {
+      if(pumpIsActive[pumpId] && !pumpIsRunning[pumpId])
+      {
+        start_pump_manual(pumpId);
+      } else if (!pumpIsActive[pumpId] && pumpIsRunning[pumpId])
+      {
+        stop_pump(pumpId);
+      }
+
+    } else {
+      // Serial.print(digitalRead(pumpController[0]));
+      read_moisture_level(pumpId);
+      manage_pump(pumpId);
+    }
   }
+
 
 }
