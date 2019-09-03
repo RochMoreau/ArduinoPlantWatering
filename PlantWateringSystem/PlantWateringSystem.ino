@@ -37,6 +37,8 @@ const int moistureThreshold[2] = {40, 30}; // Percentage below which the pump sh
 unsigned long previousMillisGlobalTimer = 0;
 unsigned long previousMillisButtonResetTimer = 0;
 unsigned long previousMillisPump[2] = {0, 0};
+unsigned long previousMillisPumpManual[2] = {0, 0};
+unsigned long endMillisPumpManual[2] = {0, 0};
 int moistureLevel[2] = {0, 0};
 unsigned long previousMillisMoisture[2] = {0, 0};
 
@@ -67,12 +69,18 @@ void remaining_time_to_string(char* text, unsigned long previousTime, unsigned l
   int minutes = numberOfMinutes(remainingTime);
   int seconds = numberOfSeconds(remainingTime);
 
-  if (systemIsActive)
-  {
-    sprintf(text,"%d:%d:%d",hours,minutes,seconds);
-  } else {
-    sprintf(text,"%d:%d:%d",hours,minutes,seconds);
-  }
+  sprintf(text,"%d:%d:%d",hours,minutes,seconds);
+}
+
+void elapsed_time_to_string(char* text, unsigned long beginTime, unsigned long endTime) {
+  unsigned long elapsedTime = (endTime - beginTime)/1000;
+  
+  int hours = numberOfHours(elapsedTime);
+  int minutes = numberOfMinutes(elapsedTime);
+  int seconds = numberOfSeconds(elapsedTime);
+
+  sprintf(text,"%d:%d:%d",hours,minutes,seconds);
+
 }
 
 void draw_pumps_header() {
@@ -205,18 +213,30 @@ void main_screen() {
 }
 
 void manual_mode_screen() {
+  unsigned long currentMillis = millis();
   u8g.setFontPosCenter();
-  u8g.drawStr( 64, 10, "MANUAL MODE");
+  u8g.drawStr( 33, 10, "MANUAL MODE");
   for (int pumpId = 0; pumpId < 2; pumpId++)
   {
-    u8g.drawStr( 32+64*pumpId, 22, pumpName[pumpId]);
+    u8g.drawStr( 12+70*pumpId, 32, pumpName[pumpId]);
     if (pumpIsActive[pumpId])
     {
-      u8g.drawStr( 32+64*pumpId, 42, "RUNNING");
+      u8g.drawStr( 12+70*pumpId, 45, "RUNNING");
     } else {
-      u8g.drawStr( 32+64*pumpId, 42, "OFF");
+      u8g.drawStr( 12+70*pumpId, 45, "OFF");
     }
-    
+
+    if(previousMillisPumpManual[pumpId] > 0) {
+      char elapsedTime[10];
+      if (previousMillisPumpManual[pumpId] > endMillisPumpManual[pumpId])
+      {
+        elapsed_time_to_string(elapsedTime, previousMillisPumpManual[pumpId], currentMillis);
+      } else {
+        elapsed_time_to_string(elapsedTime, previousMillisPumpManual[pumpId], endMillisPumpManual[pumpId]);
+      }
+      
+      u8g.drawStr( 12+70*pumpId, 55, elapsedTime);
+    }
   }
   
 }
@@ -264,12 +284,18 @@ void stop_pump(int pumpId) {
   pumpIsRunning[pumpId] = false;
   digitalWrite(pump[pumpId], LOW);
 }
-// Same method as before but in manual mode. Does not start a timer
+// Same method as before but in manual mode. Starts a different timer
 void start_pump_manual(int pumpId) {
+  previousMillisPumpManual[pumpId] = millis();
   pumpIsRunning[pumpId] = true;
   digitalWrite(pump[pumpId], HIGH);
 }
-
+// Methods for stopping the pumps in manual mode. Stop the alternative timer
+void stop_pump_manual(int pumpId) {
+  endMillisPumpManual[pumpId] = millis();
+  pumpIsRunning[pumpId] = false;
+  digitalWrite(pump[pumpId], LOW);
+}
 
 void manage_pump(int pumpId) {
   long currentMillis = millis();
@@ -363,7 +389,7 @@ void loop(void) {
         start_pump_manual(pumpId);
       } else if (!pumpIsActive[pumpId] && pumpIsRunning[pumpId])
       {
-        stop_pump(pumpId);
+        stop_pump_manual(pumpId);
       }
 
     } else {
