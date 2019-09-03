@@ -52,7 +52,7 @@ boolean pumpIsRunning[2] = {false, false};
 // Variables to keep the system safe (block the pumps if the sensor don't get better level after 2 pump activation)
 int pumpActivationCounter[2] = {0,0}; // pumpActivationCounter : 0 : no problem so far, 1 : maybe a problem, 2: definitely a problem
 int moistureLevelLastPumpActivation[2] = {0,0};
-boolean pumpIsBlocked[2] = {true, true}; // Activate the pump in manual mode to unlock it
+boolean pumpIsBlocked[2] = {false, false}; // Activate the pump in manual mode to unlock it
 
 
 
@@ -109,6 +109,8 @@ void draw_plant_data(int pumpId){
   unsigned long currentMillis = millis();
   boolean isPaused = false;
   boolean isReady = false;
+  // If sensor value is out of acceptable range (lowestAcceptableLevel and highestAcceptableLevel)
+  boolean sensorError = false; 
 
   int verticalPos = 22 + pumpId * 10;
 
@@ -117,7 +119,11 @@ void draw_plant_data(int pumpId){
     pumpActivityText = "BLOCKED";
   } else if (pumpIsActive[pumpId])
   {
-    if (pumpIsRunning[pumpId]) // Pump is delivering water
+    if (moistureLevel[pumpId] < lowestAcceptableLevel || moistureLevel[pumpId] > highestAcceptableLevel) {
+      pumpActivityText = "LVL ERR";
+      sensorError = true;
+    }
+    else if (pumpIsRunning[pumpId]) // Pump is delivering water
     {
       pumpActivityText = "RUN";
     } else if (currentMillis - previousMillisPump[pumpId] < intervalPump[pumpId] && previousMillisPump[pumpId] != 0) // Pump is paused because it has been used recently
@@ -142,21 +148,25 @@ void draw_plant_data(int pumpId){
   // Delay
   if( pumpIsBlocked[pumpId] ) 
   {
-    u8g.drawStr(98, verticalPos, "Man ON");
+    u8g.drawStr(95, verticalPos, "Man ON");
   }
   else if (!systemIsActive)
   {
-    u8g.drawStr(98, verticalPos, "Sys ON");
+    u8g.drawStr(95, verticalPos, "Sys ON");
   } else if (isPaused) {
     char remainingTime[10];
     remaining_time_to_string(remainingTime, previousMillisPump[pumpId], intervalPump[pumpId]);
-    u8g.drawStr(98, verticalPos, remainingTime);
+    u8g.drawStr(95, verticalPos, remainingTime);
   } else if (isReady)
   {
     char waitThresholdText[10];
     sprintf(waitThresholdText, "<%d%%", moistureThreshold[pumpId]);
-    u8g.drawStr(98, verticalPos, waitThresholdText);
+    u8g.drawStr(95, verticalPos, waitThresholdText);
+  } else if (sensorError)
+  {
+    u8g.drawStr(95, verticalPos, "Refresh");
   }
+  
   
 
   u8g.drawLine(0, verticalPos+8, 128, verticalPos+8);
@@ -332,8 +342,8 @@ void manage_pump(int pumpId) {
  
 
   if (systemIsActive && pumpIsActive[pumpId] && !pumpIsRunning[pumpId] && !pumpIsBlocked[pumpId]
-  && moistureLevel[pumpId] < moistureThreshold[pumpId] && moistureLevel[pumpId] > lowestAcceptableLevel 
-  && moistureLevel[pumpId] < highestAcceptableLevel
+  && moistureLevel[pumpId] < moistureThreshold[pumpId] && moistureLevel[pumpId] >= lowestAcceptableLevel 
+  && moistureLevel[pumpId] <= highestAcceptableLevel
   && ((currentMillis - previousMillisPump[pumpId] > intervalPump[pumpId]) || previousMillisPump[pumpId] == 0))
   {
 
