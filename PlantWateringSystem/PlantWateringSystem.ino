@@ -209,7 +209,7 @@ void manual_mode_screen() {
   u8g.drawStr( 64, 10, "MANUAL MODE");
   for (int pumpId = 0; pumpId < 2; pumpId++)
   {
-    u8g.drawStr( 32+64*pumpId, 22, pumpName);
+    u8g.drawStr( 32+64*pumpId, 22, pumpName[pumpId]);
     if (pumpIsActive[pumpId])
     {
       u8g.drawStr( 32+64*pumpId, 42, "RUNNING");
