@@ -170,7 +170,7 @@ void draw_sensor_refresh() {
 }
 
 // Diplaying the main screen with global system informations
-void main_screen(uint8_t a) {
+void main_screen() {
 
   // First line, System state and timer state
   if(systemIsActive){
@@ -224,7 +224,7 @@ void manual_mode_screen() {
 void draw(void) {
   u8g_prepare();
   switch(manualMode) {
-    case false: main_screen(draw_state&7); break;
+    case false: main_screen(); break;
     case true: manual_mode_screen(); break;
   }
 }
