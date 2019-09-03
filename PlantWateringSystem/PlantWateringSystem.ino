@@ -351,11 +351,10 @@ void loop(void) {
   }
 
 
-  pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
-
-
   for (int pumpId = 0; pumpId < 2; pumpId++)
   {
+    pumpIsActive[pumpId] = digitalRead(pumpController[pumpId]);
+    
     if (manualMode)
     {
       if(pumpIsActive[pumpId] && !pumpIsRunning[pumpId])
