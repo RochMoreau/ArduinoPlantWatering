@@ -223,9 +223,10 @@ void manual_mode_screen() {
 
 void draw(void) {
   u8g_prepare();
-  switch(manualMode) {
-    case false: main_screen(); break;
-    case true: manual_mode_screen(); break;
+  if(manualMode) {
+    manual_mode_screen();
+  } else {
+    main_screen();
   }
 }
 
