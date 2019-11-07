@@ -24,12 +24,12 @@ int moistureSensor[2] = {A0, A1};
 unsigned long interval10h = (unsigned long)1000 * 60 * 60 * 10;
 unsigned long interval14h = (unsigned long)1000 * 60 * 60 * 14;
 unsigned long intervalPump[2] = {(unsigned long)1000 * 60 * 20, (unsigned long)1000 * 60 * 20};
-unsigned long runTimePump[2] = {(unsigned long)4000, (unsigned long)4000};
+unsigned long runTimePump[2] = {(unsigned long)8000, (unsigned long)4000};
 char const *pumpName[2] = {"Pump 1", "Pump 2"};
 const int lowestAcceptableLevel = 10;                                                                         // The pump should not be triggered below this level, probable sign of error in reading
 const int highestAcceptableLevel = 90;                                                                        // The pump should not be triggered over this level also.
 unsigned long intervalMoisture[2] = {(unsigned long)intervalPump[1] / 5, (unsigned long)intervalPump[1] / 5}; // 1 read every 5 mins
-const int moistureThreshold[2] = {60, 30};                                                                    // Percentage below which the pump should be activated
+const int moistureThreshold[2] = {80, 60};                                                                    // Percentage below which the pump should be activated
 
 // Global variables to keep the state of the system
 unsigned long previousMillisGlobalTimer = 0;
